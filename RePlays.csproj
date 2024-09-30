@@ -1,0 +1,176 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup Label="Globals">
+    <WebView2UseWinRT>False</WebView2UseWinRT>
+    <Configurations>Debug;Release;ReleaseWithSymbols</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
+    <TargetFramework>net8.0</TargetFramework>
+    <UseWindowsForms>false</UseWindowsForms>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <SpaRoot>ClientApp\</SpaRoot>
+    <ApplicationIcon>Resources\logo.ico</ApplicationIcon>
+    <RepositoryUrl>https://github.com/lulzsun/RePlays</RepositoryUrl>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <NugetTools>$(PkgNuGet_CommandLine)\tools</NugetTools>
+    <SquirrelTools>$(PkgClowd_Squirrel)\tools</SquirrelTools>
+    <Version>1.0.0</Version>
+    <NuspecFile>RePlays.nuspec</NuspecFile>
+    <Nullable>annotations</Nullable>
+    <StartupObject>RePlays.Program</StartupObject>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseWithSymbols|AnyCPU'">
+    <Optimize>True</Optimize>
+    <DefineConstants>TRACE;DEBUG</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <!-- Don't publish the SPA source files, but do show them in the project files list -->
+    <Content Remove="$(SpaRoot)**" />
+    <None Remove="$(SpaRoot)**" />
+    <None Remove="Classes\Integrations\**" />
+    <None Remove="Classes\Recorders\**" />
+    <None Remove="Classes\Services\**" />
+    <None Remove="Classes\Uploaders\**" />
+    <None Remove="ClientApp\build\**" />
+    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="ClientApp\build\**" />
+    <Compile Remove="Classes\Integrations\**" />
+    <Compile Remove="Classes\Recorders\**" />
+    <Compile Remove="Classes\Services\**" />
+    <Compile Remove="Classes\Uploaders\**" />
+    <Compile Remove="ClientApp\build\**" />
+    <Compile Remove="obs-studio-build\**" />
+    <EmbeddedResource Remove="Classes\Integrations\**" />
+    <EmbeddedResource Remove="Classes\Recorders\**" />
+    <EmbeddedResource Remove="Classes\Services\**" />
+    <EmbeddedResource Remove="Classes\Uploaders\**" />
+    <EmbeddedResource Remove="ClientApp\build\**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Content Include="Resources\logo.ico" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
+    <PackageReference Include="JsonPath.Net" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.9" />
+    <PackageReference Include="Microsoft.AspNetCore" Version="2.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
+    <PackageReference Include="Microsoft.AspNetCore.StaticFiles" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2420.47" />
+    <PackageReference Include="NuGet.CommandLine" Version="6.9.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SharpHook" Version="5.3.1" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <Target Name="DebugEnsureNodeEnv" BeforeTargets="Build" Condition=" '$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules') ">
+    <!-- Ensure Node.js is installed -->
+    <Exec Command="node --version" ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="ErrorCode" />
+    </Exec>
+    <Error Condition="'$(ErrorCode)' != '0'" Text="Node.js is required to build and run this project. To continue, please install Node.js from https://nodejs.org/, and then restart your command prompt or IDE." />
+    <Message Importance="high" Text="Restoring dependencies using 'npm'. This may take several minutes..." />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+  </Target>
+
+  <Target Name="PublishRunWebpack" AfterTargets="ComputeFilesToPublish">
+    <!-- As part of publishing, ensure the JS resources are freshly built in production mode -->
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+
+    <!-- Include the newly-built files in the publish output -->
+    <ItemGroup>
+      <DistFiles1 Include="$(SpaRoot)build\**" />
+      <ResolvedFileToPublish Include="@(DistFiles1->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>%(DistFiles1.Identity)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+
+    <!-- Include resources in the publish output -->
+    <ItemGroup>
+      <DistFiles4 Include="$(MSBuildProjectDirectory)\Resources\**" />
+      <ResolvedFileToPublish Include="@(DistFiles4->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>Resources\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+
+    <!-- Include a copy of the app's license -->
+    <ItemGroup>
+      <_license Include="$(MSBuildProjectDirectory)\LICENSE" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_license)" DestinationFolder="$(PublishDir)" />
+  </Target>
+
+  <Target Name="Package" AfterTargets="Publish" Condition=" '$(Configuration)' == 'Release' ">
+    <!-- Prepare Squirrel package -->
+    <XmlPeek XmlInputPath="$(NuspecFile)" Query="/package/metadata/id/text()">
+      <Output TaskParameter="Result" ItemName="ID" />
+    </XmlPeek>
+
+    <Exec Command="$(NugetTools)\NuGet.exe pack $(NuspecFile) -Version $(Version) -Properties Configuration=Release -OutputDirectory $(MSBuildProjectDirectory)\bin\Deployment\GeneratedNugets" />
+    <Exec Command="$(SquirrelTools)\Squirrel.exe releasify --package=$(MSBuildProjectDirectory)\bin\Deployment\GeneratedNugets\@(ID).$(Version).nupkg --releaseDir=$(MSBuildProjectDirectory)\bin\Deployment\Releases --framework net8" />
+  </Target>
+
+  <ItemGroup>
+    <EditorConfigFiles Remove="$(MSBuildProjectDirectory)\.editorconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildProjectDirectory)\.editorconfig" />
+  </ItemGroup>
+
+</Project>

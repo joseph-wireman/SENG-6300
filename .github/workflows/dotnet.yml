@@ -1,0 +1,143 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build and Draft Nightly Release
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  schedule:
+    - cron: "0 7 * * *"
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow checks to see if branch has any changes since last wo
+  prep:
+    runs-on: ubuntu-latest
+    name: Prepare for Build
+
+    outputs:
+      oldversion: ${{ steps.previoustag.outputs.tag }}
+      version: ${{ steps.semvers.outputs.patch }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: "check latest commit is less than a day"
+        id: check_commit
+        continue-on-error: true
+        if: ${{ github.event_name == 'schedule' }}
+        run: test -z $(git rev-list  --after="24 hours"  ${{ github.sha }}) && echo "should_run=false" >> $GITHUB_OUTPUT
+
+      - name: "if not, do not build"
+        if: ${{ steps.check_commit.outputs.should_run == 'false' }}
+        run: exit 1
+
+      - name: "Check if nightly exists"
+        id: nightly
+        uses: cardinalby/git-get-release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tag: "nightly"
+          prerelease: true
+          doNotFailIfNotFound: true
+
+      - name: "Get Previous tag"
+        id: previoustag
+        run: |
+          if [ "${{steps.nightly.outputs.id}}" == "" ]; then
+            echo "tag=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))" >> $GITHUB_OUTPUT
+          else
+            echo "tag=$(echo ${{steps.nightly.outputs.name}} | perl -pe '($_)=/([0-9]+([.][0-9]+)+)/')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Get next version"
+        id: semvers
+        uses: "WyriHaximus/github-action-next-semvers@v1"
+        with:
+          version: ${{ steps.previoustag.outputs.tag }}
+
+      - name: output
+        run: echo ${{steps.previoustag.outputs.tag}} ${{steps.semvers.outputs.patch}}
+
+  build:
+    needs: prep
+    runs-on: windows-latest
+    name: Build RePlays
+
+    permissions:
+      contents: write
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+        with:
+          submodules: "true"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.100
+
+      - name: Download previous release to create delta
+        uses: robinraju/release-downloader@v1.3
+        with:
+          token: ${{ secrets.MY_TOKEN }}
+          repository: ${{ github.repository }}
+          latest: true
+          fileName: "*"
+          # Relative path under $GITHUB_WORKSPACE to place the downloaded file(s)
+          # It will create the target directory automatically if not present
+          # eg: out-file-path: "my-downloads" => It will create directory $GITHUB_WORKSPACE/my-downloads
+          out-file-path: "bin/Deployment/Releases"
+
+      - name: Build LibObs
+        run: .\\build-libobs.cmd
+        shell: cmd
+
+      - name: Build RePlays
+        env:
+          CI: false
+        run: dotnet publish /p:Configuration=Release /p:Version=${{needs.prep.outputs.version}} /p:PublishProfile=FolderProfile
+
+      - name: Append version to setup file
+        run: ren ./bin/Deployment/Releases/RePlaysSetup.exe RePlaysSetup-${{needs.prep.outputs.version}}.exe
+
+      - name: Update nightly tag
+        uses: richardsimko/update-tag@v1
+        with:
+          tag_name: nightly
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old prerelease deltas
+        run: |
+          gh release delete-asset "nightly" "RePlays-${{needs.prep.outputs.oldversion}}-full.nupkg" &&
+          gh release delete-asset "nightly" "RePlays-${{needs.prep.outputs.oldversion}}-delta.nupkg"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: "nightly"
+          prerelease: true
+          generate_release_notes: true
+          name: ${{ format('Nightly RePlays v{0}', needs.prep.outputs.version )}}
+          body: "Nightly release, built with the latest and potentially breaking changes, test at your own risk."
+          files: |
+            ./bin/Deployment/Releases/RELEASES
+            ./bin/Deployment/Releases/RePlaysSetup-${{needs.prep.outputs.version}}.exe
+            ./bin/Deployment/Releases/RePlays-${{needs.prep.outputs.version}}-full.nupkg
+            ./bin/Deployment/Releases/RePlays-${{needs.prep.outputs.version}}-delta.nupkg

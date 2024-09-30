@@ -1,0 +1,115 @@
+﻿using System;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Diagnostics;
+using System.Net.Sockets;
+using System.Text;
+using RePlays.Utils;
+using static RePlays.Utils.Functions;
+
+
+using Squirrel;
+using System.Windows.Forms;
+
+namespace RePlays {
+    static class Program {
+        [DllImport("kernel32.dll")]
+        static extern bool AttachConsole(int dwProcessId);
+        const int ATTACH_PARENT_PROCESS = -1;
+        static readonly ManualResetEventSlim ApplicationExitEvent = new(false);
+
+        [STAThread]
+        [Obsolete]
+        static void Main(string[] args) {
+            Functions.SetProgramArgs(args);
+            // redirect console output to parent process;
+            // must be before any calls to Console.WriteLine()
+            if (args.Any("--debug".Contains)) {
+                Logger.IsConsole = true;
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
+            else {
+                Logger.Purge();
+            }
+
+            // log current culture and set culture to en-US
+            CultureInfo.DefaultThreadCurrentCulture = new("en-US");
+
+            // log all exceptions
+            AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) => {
+                var st = new StackTrace((Exception)eventArgs.ExceptionObject, true);
+                var frames = st.GetFrames();
+                if (frames.Length != 0) {
+                    Logger.WriteLine(
+                        eventArgs.ExceptionObject.ToString(),
+                        st.GetFrames().Last().GetFileName() ?? "External Library",
+                        st.GetFrames().Last().GetMethod().Name,
+                        st.GetFrames().Last().GetFileLineNumber()
+                    );
+                }
+                else {
+                    Logger.WriteLine(eventArgs.ExceptionObject.ToString());
+                }
+            };
+
+            // prevent multiple instances
+            var mutex = new Mutex(true, @"Global\RePlays", out var createdNew);
+            if (!createdNew) {
+                Logger.WriteLine("RePlays is already running! Exiting the application and bringing the other instance to foreground.");
+                try {
+                    using (var sender = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)) {
+                        sender.Connect(new IPEndPoint(IPAddress.Loopback, 3333));
+                        sender.Send(Encoding.UTF8.GetBytes("BringToForeground"));
+                        Logger.WriteLine($"Sent BringToForeground to the other instance");
+                    }
+                }
+                catch (Exception ex) {
+                    Logger.WriteLine($"Socket client exception: {ex.Message}");
+                }
+                return;
+            }
+
+#if DEBUG && !NO_SERVER
+            // this will run our react app if its not already running
+            var startInfo = new ProcessStartInfo {
+                FileName = "cmd.exe",
+                Arguments = "/c npm run start",
+                WorkingDirectory = Path.Join(GetSolutionPath(), @"ClientApp")
+            };
+            Process process = null;
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create("http://localhost:3000/index.html");
+            request.AllowAutoRedirect = false;
+            request.Method = "HEAD";
+
+            try {
+                request.GetResponse();
+            }
+            catch (WebException) {
+                process ??= Process.Start(startInfo);
+            }
+#endif
+            // squirrel configuration
+            try {
+                SquirrelAwareApp.HandleEvents(
+                    onInitialInstall: (_, tools) => tools.CreateShortcutForThisExe(),
+                    onAppUpdate: (_, tools) => tools.CreateShortcutForThisExe(),
+                    onAppUninstall: (_, tools) => tools.RemoveShortcutForThisExe()
+                );
+            }
+            catch (Exception exception) {
+                Logger.WriteLine(exception.ToString());
+            }
+
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new WindowsInterface());
+            (Process.GetCurrentProcess()).Kill(); // this is not a clean exit, need to look into why we can't cleanly exit
+        }
+    }
+}
