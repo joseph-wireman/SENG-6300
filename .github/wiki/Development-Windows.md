@@ -4,8 +4,8 @@ Feel free to reach out on Discord if you have issues or questions about the setu
 
 Prerequisites:
 
-*   Visual Studio 17 2022
-    *   [.NET SDK 8.0.100](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-8.0.100-windows-x64-installer)
+*   Visual Studio 2022
+    *   [.NET SDK 8.0.302](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/sdk-8.0.302-windows-x64-installer)
 *   Node 18+
 *   Knowledge in C# and Typescript (React.js)
 
@@ -22,7 +22,7 @@ Visual Studio will be the main IDE for this guide, however feel free to follow a
 
 Using git cli or using your preferred method of cloning. Make sure to include submodules.
 
-*   `git clone --recursive https://github.com/lulzsun/RePlays.git`
+*   `git clone --recursive https://github.com/joseph-wireman/SENG-6300.git`
 
 # 2. Open the Visual Studio project
 
